@@ -33,6 +33,7 @@
 #include <signal.h>
 #include <assert.h>
 #include <string.h>
+#include <stdlib.h>
 
 #include "vm.h"
 #include "clock.h"
@@ -1779,9 +1780,35 @@ void dequeue(struct proc *rp)
 #endif
 }
 
+/* os sorteios devem ser implementados no interior de pick_prock, a logica será a seguinte:
+
+	1)Sortear a fila a ser executada: quanto maior a prioridade da fila, maior a chance dela ser
+	sorteada
+
+	2)Sortear o processo a ser executado: uma vez a fila escolhida, os processos em seu interior
+	terão uma chance igual de ser executados, o vencedor do sorteio terá acesso a CPU  
+
+*/
+
 /*===========================================================================*
  *				pick_proc				     * 
  *===========================================================================*/
+
+// *Really* minimal PCG32 code / (c) 2014 M.E. O'Neill / pcg-random.org
+// Licensed under Apache License 2.0 (NO WARRANTY, etc. see website)
+typedef struct { long state;  long inc; } pcg32_random_t;
+long pcg32_random_r(pcg32_random_t* rng){
+    long oldstate = rng->state;
+    // Advance internal state
+    rng->state = oldstate * 6364136223846793005ULL + (rng->inc|1);
+    // Calculate output function (XSH RR), uses old state for max ILP
+    long xorshifted = ((oldstate >> 18u) ^ oldstate) >> 27u;
+    long rot = oldstate >> 7u;
+    return (xorshifted >> rot) | (xorshifted << ((-rot) & 31));
+}
+static pcg32_random_t random_seed = {18, 8};
+
+
 static struct proc * pick_proc(void)
 {
 /* Decide who to run now.  A new process is selected and returned.
@@ -1792,25 +1819,60 @@ static struct proc * pick_proc(void)
  */
   register struct proc *rp;			/* process to run */
   struct proc **rdy_head;
-  int q;				/* iterate over queues */
+  int q;					/* iterate over queues */
 
-  /* Check each of the scheduling queues for ready processes. The number of
-   * queues is defined in proc.h, and priorities are set in the task table.
-   * If there are no processes ready to run, return NULL.
-   */
+ struct proc **rdy_tail;			/* auxilia no calculo da loteria */			 
+ 
+ int avbl_q[NR_SCHED_QUEUES];			/* armazena as filas disponiveis */
+ int n_avbl_q = 0;				/* armazena a quantidade de filas disponiveis */
+ int tp = 0;					/* armazena o total das parcelas */
+ unsigned int win; 				/* armazena os valores sorteados */
+ int hold ;					/* variavel auxiliar */
+
+  get_cpulocal_var(run_q_tail);
   rdy_head = get_cpulocal_var(run_q_head);
   for (q=0; q < NR_SCHED_QUEUES; q++) {	
 	if(!(rp = rdy_head[q])) {
 		TRACE(VF_PICKPROC, printf("cpu %d queue %d empty\n", cpuid, q););
 		continue;
 	}
-	assert(proc_is_runnable(rp));
-	if (priv(rp)->s_flags & BILLABLE)	 	
-		get_cpulocal_var(bill_ptr) = rp; /* bill for system time */
-	return rp;
+
+	avbl_q[n_avbl_q] = q;			/* salva as filas prontas de forma sequencial */
+	n_avbl_q++;
   }
-  return NULL;
-}
+
+ if(n_avbl_q == 0) return NULL;		/* retorna NULL na ausencia de processos */
+
+  for(q=0; q < n_avbl_q; q++){	
+  	tp += NR_SCHED_QUEUES - avbl_q[q];	/* calcula o total */
+  }
+
+  win = pcg32_random_r(&random_seed) % tp; /* sorteia um numero entre 0 e tp*/
+  
+  /* caso o número sorteado esteja na parcela de uma das filas, essa será escolhida, 
+  do contrário, buscar pela próxima fila, filas de maior prioridade possuem maiores parcelas*/
+
+  hold = 0;					
+  for(q=0; q < n_avbl_q; q++){
+  	hold += NR_SCHED_QUEUES - avbl_q[q];
+  	if(win < hold) break;			
+  }						/* saindo desse loop, q é a nossa fila sorteada*/
+
+   
+  hold = rdy_tail[q] - rdy_head[q];		/* numero de processos na fila sorteada*/		
+  win = pcg32_random_r(&random_seed) % hold;	/* processo vencedor*/
+
+  rp = rdy_head[q];	
+  while(win){
+  	rp = rp->p_nextready;
+  	win--;
+  }
+
+  assert(proc_is_runnable(rp));
+  if (priv(rp)->s_flags & BILLABLE) 
+  get_cpulocal_var(bill_ptr) = rp; /* bill for system time */
+  return rp;
+ }
 
 /*===========================================================================*
  *				endpoint_lookup				     *

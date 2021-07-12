@@ -95,10 +95,8 @@ int do_noquantum(message *m_ptr)
 		return EBADEPT;
 	}
 
-	rmp = &schedproc[proc_nr_n];
-	if (rmp->priority < MIN_USER_Q) {
-		rmp->priority += 1; /* lower priority */
-	}
+	/*Não é mais necessário reduzir a prioridade do processo, visto que o escalonador em núcleo
+	opera com base em sorteios (não há risco de inanição das prioridades mais baixas)*/
 
 	if ((rv = schedule_process_local(rmp)) != OK) {
 		return rv;
@@ -354,6 +352,10 @@ void balance_queues(void)
 {
 	struct schedproc *rmp;
 	int r, proc_nr;
+
+	/* não é mais necessário realizar balancear os processos que tiveam a prioridade reduzida, 
+	visto que essa política foi removida (originalemnte presente em do_noquantum), essa função é 
+	essencialmente inutil, sua remoção é desejável no futuro*/
 
 	for (proc_nr=0, rmp=schedproc; proc_nr < NR_PROCS; proc_nr++, rmp++) {
 		if (rmp->flags & IN_USE) {
