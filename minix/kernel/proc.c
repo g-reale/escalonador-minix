@@ -33,7 +33,6 @@
 #include <signal.h>
 #include <assert.h>
 #include <string.h>
-#include <stdlib.h>
 
 #include "vm.h"
 #include "clock.h"
@@ -1829,8 +1828,9 @@ static struct proc * pick_proc(void)
  unsigned int win; 				/* armazena os valores sorteados */
  int hold ;					/* variavel auxiliar */
 
-  get_cpulocal_var(run_q_tail);
+  rdy_tail = get_cpulocal_var(run_q_tail);
   rdy_head = get_cpulocal_var(run_q_head);
+  
   for (q=0; q < NR_SCHED_QUEUES; q++) {	
 	if(!(rp = rdy_head[q])) {
 		TRACE(VF_PICKPROC, printf("cpu %d queue %d empty\n", cpuid, q););
@@ -1841,7 +1841,7 @@ static struct proc * pick_proc(void)
 	n_avbl_q++;
   }
 
- if(n_avbl_q == 0) return NULL;		/* retorna NULL na ausencia de processos */
+ if(n_avbl_q == 0) return NULL;			/* retorna NULL na ausencia de processos */
 
   for(q=0; q < n_avbl_q; q++){	
   	tp += NR_SCHED_QUEUES - avbl_q[q];	/* calcula o total */

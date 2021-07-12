@@ -98,6 +98,7 @@ int do_noquantum(message *m_ptr)
 	/*Não é mais necessário reduzir a prioridade do processo, visto que o escalonador em núcleo
 	opera com base em sorteios (não há risco de inanição das prioridades mais baixas)*/
 
+	rmp = &schedproc[proc_nr_n];
 	if ((rv = schedule_process_local(rmp)) != OK) {
 		return rv;
 	}
