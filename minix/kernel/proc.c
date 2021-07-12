@@ -1829,7 +1829,7 @@ static struct proc * pick_proc(void)
  unsigned int win; 				/* armazena os valores sorteados */
  int hold ;					/* variavel auxiliar */
 
-  get_cpulocal_var(run_q_tail);
+  rdy_tail = get_cpulocal_var(run_q_tail);
   rdy_head = get_cpulocal_var(run_q_head);
   for (q=0; q < NR_SCHED_QUEUES; q++) {	
 	if(!(rp = rdy_head[q])) {
